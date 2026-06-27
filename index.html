@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Infobyd Voice Assistant</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Space+Grotesk:wght@400;600;700&display=swap');
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0a0a0f; --surface: #13131a; --surface2: #1c1c27;
+    --border: #2a2a3a; --accent: #6c63ff; --accent2: #a78bfa;
+    --success: #34d399; --danger: #f87171; --warn: #fbbf24;
+    --text: #f0f0ff; --text-muted: #8888aa; --glow: rgba(108,99,255,0.3);
+  }
+  body {
+    font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text);
+    min-height: 100vh; display: flex; flex-direction: column;
+    align-items: center; justify-content: flex-start;
+    padding: 24px; overflow-x: hidden;
+  }
+  body::before {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(rgba(108,99,255,0.04) 1px, transparent 1px),
+                      linear-gradient(90deg, rgba(108,99,255,0.04) 1px, transparent 1px);
+    background-size: 40px 40px; pointer-events: none;
+  }
+  .container { width: 100%; max-width: 500px; display: flex; flex-direction: column; gap: 16px; position: relative; z-index: 1; padding-top: 16px; }
+ 
+  /* Header */
+  .header { text-align: center; }
+  .logo { font-family: 'Space Grotesk', sans-serif; font-size: 12px; font-weight: 600; letter-spacing: 3px; text-transform: uppercase; color: var(--accent2); margin-bottom: 6px; }
+  .header h1 { font-family: 'Space Grotesk', sans-serif; font-size: 26px; font-weight: 700; }
+  .header p { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+ 
+  /* Name banner */
+  .name-banner {
+    background: linear-gradient(135deg, rgba(108,99,255,0.15), rgba(167,139,250,0.08));
+    border: 1px solid rgba(108,99,255,0.3);
+    border-radius: 12px; padding: 10px 16px;
+    font-size: 14px; color: var(--accent2); text-align: center;
+    display: none; font-weight: 500;
+  }
+  .name-banner.visible { display: block; }
+ 
+  /* Orb */
+  .orb-area {
+    display: flex; flex-direction: column; align-items: center; gap: 16px;
+    padding: 32px 24px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 24px;
+  }
+  .orb-wrap { position: relative; width: 130px; height: 130px; cursor: pointer; }
+  .orb-ring { position: absolute; inset: -14px; border-radius: 50%; border: 1.5px solid transparent; transition: all 0.4s ease; }
+  .orb-ring.listening { border-color: var(--accent); box-shadow: 0 0 28px var(--glow); animation: spin 3s linear infinite; }
+  .orb-ring.speaking  { border-color: var(--success); box-shadow: 0 0 28px rgba(52,211,153,0.3); animation: spin 4s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .orb {
+    width: 130px; height: 130px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #8b7cf8, #4c3fd6 60%, #1a0f6e);
+    display: flex; align-items: center; justify-content: center;
+    transition: transform 0.2s, box-shadow 0.3s; position: relative; z-index: 1;
+    box-shadow: 0 0 20px rgba(108,99,255,0.1);
+  }
+  .orb.listening { animation: pulse-orb 1.2s ease-in-out infinite; box-shadow: 0 0 50px var(--glow); }
+  .orb.thinking  { animation: throb 1s ease-in-out infinite; box-shadow: 0 0 30px rgba(251,191,36,0.3); }
+  .orb.speaking  { animation: speak-orb 0.7s ease-in-out infinite alternate; box-shadow: 0 0 40px rgba(52,211,153,0.35); }
+  @keyframes pulse-orb { 0%,100%{transform:scale(1)} 50%{transform:scale(1.07)} }
+  @keyframes throb      { 0%,100%{transform:scale(1)} 50%{transform:scale(1.04)} }
+  @keyframes speak-orb  { from{transform:scale(1)} to{transform:scale(1.05)} }
+  .orb-icon { font-size: 46px; user-select: none; }
+ 
+  .waveform { display:flex; align-items:center; gap:4px; height:28px; opacity:0; transition:opacity 0.3s; }
+  .waveform.active { opacity:1; }
+  .bar { width:4px; background:var(--accent); border-radius:2px; height:8px; }
+  .waveform.active .bar { animation: wave 1s ease-in-out infinite; }
+  .waveform.speaking .bar { background:var(--success); animation: wave 0.6s ease-in-out infinite; }
+  .bar:nth-child(1){animation-delay:0s}.bar:nth-child(2){animation-delay:.1s}.bar:nth-child(3){animation-delay:.2s}
+  .bar:nth-child(4){animation-delay:.3s}.bar:nth-child(5){animation-delay:.2s}.bar:nth-child(6){animation-delay:.1s}.bar:nth-child(7){animation-delay:0s}
+  @keyframes wave { 0%,100%{height:8px} 50%{height:26px} }
+ 
+  .status-label { font-size:13px; font-weight:500; color:var(--text-muted); letter-spacing:0.5px; text-align:center; min-height:18px; }
+  .status-label.listening { color:var(--accent2); }
+  .status-label.speaking  { color:var(--success); }
+  .status-label.thinking  { color:var(--warn); }
+  .status-label.error     { color:var(--danger); }
+ 
+  .live-transcript { min-height:32px; font-size:13px; color:var(--text-muted); font-style:italic; text-align:center; padding:0 12px; transition:color 0.2s; }
+  .live-transcript.active { color:var(--text); font-style:normal; }
+ 
+  /* Buttons row */
+  .btn-row { display:flex; gap:10px; width:100%; }
+  .control-btn {
+    flex:1; padding:14px; border-radius:14px; border:1.5px solid var(--border);
+    background:var(--surface2); color:var(--text);
+    font-family:'Space Grotesk',sans-serif; font-size:14px; font-weight:600;
+    cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;
+    transition:all 0.2s;
+  }
+  .control-btn:hover { border-color:var(--accent); background:rgba(108,99,255,0.08); }
+  .control-btn.stop { background:rgba(248,113,113,0.1); border-color:var(--danger); color:var(--danger); }
+  .control-btn.stop:hover { background:rgba(248,113,113,0.18); }
+  .clear-btn {
+    padding:14px 16px; border-radius:14px; border:1.5px solid var(--border);
+    background:var(--surface2); color:var(--text-muted);
+    font-family:'Space Grotesk',sans-serif; font-size:13px; font-weight:600;
+    cursor:pointer; display:flex; align-items:center; gap:6px; transition:all 0.2s;
+    white-space:nowrap;
+  }
+  .clear-btn:hover { border-color:var(--danger); color:var(--danger); background:rgba(248,113,113,0.06); }
+ 
+  /* Chat log */
+  .chat-log {
+    background:var(--surface); border:1px solid var(--border); border-radius:20px;
+    padding:16px; display:flex; flex-direction:column; gap:10px;
+    max-height:280px; overflow-y:auto;
+    scrollbar-width:thin; scrollbar-color:var(--border) transparent;
+  }
+  .empty-state { color:var(--text-muted); font-size:13px; text-align:center; padding:20px 0; }
+  .msg { display:flex; flex-direction:column; gap:4px; animation:fadeUp 0.3s ease; }
+  @keyframes fadeUp { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+  .msg-label { font-size:10px; font-weight:600; letter-spacing:1px; text-transform:uppercase; color:var(--text-muted); }
+  .msg.user .msg-label { color:var(--accent2); }
+  .msg.bot  .msg-label { color:var(--success); }
+  .msg-text { font-size:14px; line-height:1.6; color:var(--text); background:var(--surface2); padding:10px 14px; border-radius:12px; border:1px solid var(--border); }
+  .msg.user .msg-text { border-color:rgba(108,99,255,0.2); background:rgba(108,99,255,0.08); }
+ 
+  /* Settings */
+  .settings { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:16px; }
+  .settings-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; cursor:pointer; }
+  .settings-header h3 { font-family:'Space Grotesk',sans-serif; font-size:12px; font-weight:600; letter-spacing:1px; text-transform:uppercase; color:var(--text-muted); }
+  .settings-body { display:flex; flex-direction:column; gap:10px; }
+  .setting-row { display:flex; flex-direction:column; gap:4px; }
+  .setting-row label { font-size:12px; color:var(--text-muted); font-weight:500; }
+  .setting-row input {
+    width:100%; padding:10px 12px; background:var(--surface2);
+    border:1px solid var(--border); border-radius:10px; color:var(--text);
+    font-size:13px; font-family:'Inter',sans-serif; outline:none; transition:border-color 0.2s;
+  }
+  .setting-row input:focus { border-color:var(--accent); }
+  .save-btn {
+    padding:10px; border-radius:10px; border:1px solid var(--accent);
+    background:rgba(108,99,255,0.1); color:var(--accent2);
+    font-family:'Space Grotesk',sans-serif; font-size:13px; font-weight:600;
+    cursor:pointer; transition:all 0.2s;
+  }
+  .save-btn:hover { background:rgba(108,99,255,0.2); }
+ 
+  .footer { text-align:center; font-size:12px; color:var(--text-muted); padding-bottom:8px; margin-top:10px; }
+  .footer span { color:var(--accent2); }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="logo">Infobyd</div>
+    <h1>Voice Assistant</h1>
+    <p>Hands-free · just speak, it listens automatically</p>
+  </div>
+ 
+  <div class="name-banner" id="nameBanner">👋 Hello! I'll remember your name during this chat.</div>
+ 
+  <div class="orb-area">
+    <div class="orb-wrap" onclick="toggleSession()">
+      <div class="orb-ring" id="orbRing"></div>
+      <div class="orb" id="orb"><div class="orb-icon" id="orbIcon">🎙️</div></div>
+    </div>
+    <div class="waveform" id="waveform">
+      <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+      <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
+    </div>
+    <div class="status-label" id="statusLabel">Tap orb to start conversation</div>
+    <div class="live-transcript" id="liveTranscript"></div>
+    <div class="btn-row">
+      <button class="control-btn" id="controlBtn" onclick="toggleSession()">
+        <span id="btnIcon">▶️</span><span id="btnText">Start Conversation</span>
+      </button>
+      <button class="clear-btn" onclick="clearConversation()" title="Clear chat">🗑️ Clear</button>
+    </div>
+  </div>
+ 
+  <div class="chat-log" id="chatLog">
+    <div class="empty-state" id="emptyState">Your conversation will appear here…</div>
+  </div>
+ 
+  <!-- Settings panel (Hidden from UI but functional for the script) -->
+  <div class="settings" style="display: none;">
+    <div class="settings-header">
+      <h3>⚙️ Settings</h3>
+    </div>
+    <div class="settings-body">
+      <div class="setting-row">
+        <label>n8n Webhook URL (production)</label>
+        <input type="text" id="webhookUrl" value="https://abhishek29122003chourasia.app.n8n.cloud/webhook/infobyd-voice" placeholder="https://abhishek29122003chourasia.app.n8n.cloud/webhook/infobyd-voice" />
+      </div>
+      <div class="setting-row">
+        <label>Voice Language</label>
+        <input type="text" id="voiceLang" value="en-US" placeholder="en-US, hi-IN, etc." />
+      </div>
+      <div class="setting-row">
+        <label>Business Name (shown in greeting)</label>
+        <input type="text" id="businessName" value="Infobyd" placeholder="Your company name" />
+      </div>
+      <button class="save-btn" onclick="saveSettings()">💾 Save Settings</button>
+    </div>
+  </div>
+ 
+  <div class="footer">Powered by <span>Infobyd</span> · 100% Free Voice AI</div>
+</div>
+ 
+<script>
+let sessionActive = false;
+let isListening   = false;
+let isSpeaking    = false;
+let isThinking    = false;
+let recognition   = null;
+let silenceTimer  = null;
+let restartTimer  = null;
+let userName      = null;        
+let conversationHistory = [];    
+let messageCount  = 0;
+ 
+const SILENCE_MS  = 1800;
+const RESTART_MS  = 700;
+const NAME_REGEX  = /(?:i(?:'m| am)|my name(?:'s| is)|call me|this is)\s+([A-Z][a-z]{1,20})/i;
+ 
+const orb         = document.getElementById('orb');
+const orbRing     = document.getElementById('orbRing');
+const orbIcon     = document.getElementById('orbIcon');
+const waveform    = document.getElementById('waveform');
+const statusLabel = document.getElementById('statusLabel');
+const liveTx      = document.getElementById('liveTranscript');
+const controlBtn  = document.getElementById('controlBtn');
+const btnIcon     = document.getElementById('btnIcon');
+const btnText     = document.getElementById('btnText');
+const chatLog     = document.getElementById('chatLog');
+const nameBanner  = document.getElementById('nameBanner');
+const emptyState  = document.getElementById('emptyState');
+ 
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+if (!SR) { setStatus('Use Chrome or Edge for voice', 'error'); controlBtn.disabled = true; }
+ 
+window.onload = () => {
+  const saved = JSON.parse(localStorage.getItem('ib-settings') || '{}');
+  // Only override if there's actually a saved value from previous manual entry
+  if (saved.webhookUrl && document.getElementById('webhookUrl').value === '') {
+      document.getElementById('webhookUrl').value = saved.webhookUrl;
+  }
+  if (saved.voiceLang)  document.getElementById('voiceLang').value  = saved.voiceLang;
+  if (saved.businessName) document.getElementById('businessName').value = saved.businessName;
+  window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+};
+ 
+function saveSettings() {
+  const settings = {
+    webhookUrl:   document.getElementById('webhookUrl').value.trim(),
+    voiceLang:    document.getElementById('voiceLang').value.trim(),
+    businessName: document.getElementById('businessName').value.trim()
+  };
+  localStorage.setItem('ib-settings', JSON.stringify(settings));
+  setStatus('Settings saved ✓', 'speaking');
+  setTimeout(() => setStatus(sessionActive ? 'Listening…' : 'Tap orb to start conversation', sessionActive ? 'listening' : ''), 1500);
+}
+ 
+function toggleSession() {
+  if (!sessionActive) startSession(); else stopSession();
+}
+ 
+function startSession() {
+  sessionActive = true;
+  controlBtn.className = 'control-btn stop';
+  btnIcon.textContent  = '⏹️';
+  btnText.textContent  = 'Stop Conversation';
+  startListening();
+}
+ 
+function stopSession() {
+  sessionActive = false;
+  clearTimeout(silenceTimer);
+  clearTimeout(restartTimer);
+  if (recognition) { try { recognition.abort(); } catch(e){} }
+  window.speechSynthesis.cancel();
+  isListening = isSpeaking = isThinking = false;
+  setIdleUI();
+  controlBtn.className = 'control-btn';
+  btnIcon.textContent  = '▶️';
+  btnText.textContent  = 'Start Conversation';
+}
+ 
+function clearConversation() {
+  conversationHistory = [];
+  messageCount = 0;
+  userName = null;
+  nameBanner.className = 'name-banner';
+  chatLog.innerHTML = '<div class="empty-state" id="emptyState">Your conversation will appear here…</div>';
+  if (sessionActive) stopSession();
+}
+ 
+function startListening() {
+  if (!sessionActive || isThinking || isSpeaking || isListening) return;
+  if (!SR) return;
+ 
+  recognition = new SR();
+  recognition.continuous     = true;
+  recognition.interimResults = true;
+  recognition.lang = document.getElementById('voiceLang').value || 'en-US';
+ 
+  recognition.onstart = () => { isListening = true; setListeningUI(); };
+ 
+  recognition.onresult = (e) => {
+    let interim = '', final = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const t = e.results[i][0].transcript;
+      if (e.results[i].isFinal) final += t;
+      else interim += t;
+    }
+    if (interim) {
+      liveTx.textContent  = interim;
+      liveTx.className    = 'live-transcript active';
+      resetSilenceTimer();
+    }
+    if (final.trim()) {
+      clearTimeout(silenceTimer);
+      liveTx.textContent = final.trim();
+      try { recognition.abort(); } catch(e){}
+      handleFinal(final.trim());
+    }
+  };
+ 
+  recognition.onerror = (e) => {
+    isListening = false;
+    if (['no-speech', 'aborted'].includes(e.error)) {
+      if (sessionActive && !isThinking && !isSpeaking)
+        restartTimer = setTimeout(startListening, 400);
+      return;
+    }
+    setStatus('Mic error: ' + e.error + ' — retrying…', 'error');
+    if (sessionActive) restartTimer = setTimeout(startListening, 1500);
+  };
+ 
+  recognition.onend = () => {
+    isListening = false;
+    liveTx.textContent = '';
+    liveTx.className   = 'live-transcript';
+    if (sessionActive && !isThinking && !isSpeaking)
+      restartTimer = setTimeout(startListening, 400);
+  };
+ 
+  try { recognition.start(); } catch(e) {
+    isListening = false;
+    if (sessionActive) restartTimer = setTimeout(startListening, 1000);
+  }
+}
+ 
+function resetSilenceTimer() {
+  clearTimeout(silenceTimer);
+  silenceTimer = setTimeout(() => {
+    if (isListening) { try { recognition.stop(); } catch(e){} }
+  }, SILENCE_MS);
+}
+ 
+async function handleFinal(text) {
+  isListening = false;
+  isThinking  = true;
+ 
+  if (!userName) {
+    const match = text.match(NAME_REGEX);
+    if (match) {
+      userName = match[1];
+      nameBanner.textContent = `👋 Hello, ${userName}! I'll use your name throughout our chat.`;
+      nameBanner.className   = 'name-banner visible';
+    }
+  }
+ 
+  addMessage('user', text);
+  setThinkingUI();
+ 
+  const reply = await sendToN8n(text);
+  isThinking = false;
+ 
+  const finalReply = personalizeReply(reply);
+  addMessage('bot', finalReply);
+  speak(finalReply);
+}
+ 
+function personalizeReply(text) {
+  if (!userName) return text;
+  if (messageCount === 1 || (messageCount > 1 && messageCount % 5 === 0)) {
+    return text.replace(/^(Sure|Yes|Of course|Hello|Hi|Great|Absolutely)[,!]?/i,
+      (m) => `${m}, ${userName},`).replace(/^(?!Sure|Yes|Of course|Hello|Hi|Great|Absolutely)/i,
+      `${userName}, $&`).trim();
+  }
+  return text;
+}
+ 
+async function sendToN8n(text) {
+  const url = document.getElementById('webhookUrl').value.trim();
+  if (!url) return "Please add your n8n webhook URL to the hidden settings in the HTML code.";
+ 
+  const contextPrefix = userName ? `[User name: ${userName}] ` : '';
+  const payload = {
+    chatInput: contextPrefix + text,
+    sessionId: getSessionId(),
+    userName:  userName || null,
+    messageIndex: messageCount
+  };
+ 
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+ 
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      console.error('n8n error', res.status, errText);
+      return `The server returned error ${res.status}. Please check your n8n workflow is active.`;
+    }
+ 
+    const data = await res.json();
+    messageCount++;
+    return data.output || data.text || data.message || data.response ||
+           (Array.isArray(data) && (data[0]?.output || data[0]?.text)) ||
+           'I received your message but could not parse the response.';
+ 
+  } catch(err) {
+    console.error('Fetch error:', err);
+    if (!err.message.includes('retry')) {
+      await new Promise(r => setTimeout(r, 2000));
+      try {
+        const res2 = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...payload, retry: true })
+        });
+        if (res2.ok) {
+          const d2 = await res2.json();
+          messageCount++;
+          return d2.output || d2.text || d2.message || 'Got it!';
+        }
+      } catch(e2) {}
+    }
+    return "I'm having trouble connecting. Please check if your n8n workflow production URL is properly active and listening.";
+  }
+}
+ 
+function speak(text) {
+  if (!window.speechSynthesis) { afterSpeaking(); return; }
+  window.speechSynthesis.cancel();
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.lang  = document.getElementById('voiceLang').value || 'en-US';
+  utter.rate  = 1.05; utter.pitch = 1.0;
+  const voices = window.speechSynthesis.getVoices();
+  const pick = voices.find(v => v.lang.startsWith(utter.lang.split('-')[0]) && v.name.includes('Female'))
+            || voices.find(v => v.lang.startsWith(utter.lang.split('-')[0]));
+  if (pick) utter.voice = pick;
+  utter.onstart = () => { isSpeaking = true;  setSpeakingUI(); };
+  utter.onend   = () => { isSpeaking = false; afterSpeaking(); };
+  utter.onerror = () => { isSpeaking = false; afterSpeaking(); };
+  const ttsWatchdog = setTimeout(() => { window.speechSynthesis.cancel(); }, (text.length / 10) * 1000 + 5000);
+  utter.onend = () => { clearTimeout(ttsWatchdog); isSpeaking = false; afterSpeaking(); };
+  window.speechSynthesis.speak(utter);
+}
+ 
+function afterSpeaking() {
+  if (sessionActive) restartTimer = setTimeout(startListening, RESTART_MS);
+  else setIdleUI();
+}
+ 
+function setListeningUI() {
+  orb.className      = 'orb listening'; orbRing.className  = 'orb-ring listening';
+  waveform.className = 'waveform active'; orbIcon.textContent = '👂';
+  setStatus('Listening…', 'listening');
+}
+function setThinkingUI() {
+  orb.className      = 'orb thinking';  orbRing.className  = 'orb-ring';
+  waveform.className = 'waveform';       orbIcon.textContent = '🤔';
+  setStatus('Thinking…', 'thinking');
+  liveTx.textContent = ''; liveTx.className = 'live-transcript';
+}
+function setSpeakingUI() {
+  orb.className      = 'orb speaking';  orbRing.className  = 'orb-ring speaking';
+  waveform.className = 'waveform active speaking'; orbIcon.textContent = '🔊';
+  setStatus('Speaking…', 'speaking');
+}
+function setIdleUI() {
+  orb.className      = 'orb';           orbRing.className  = 'orb-ring';
+  waveform.className = 'waveform';       orbIcon.textContent = '🎙️';
+  setStatus('Tap orb to start conversation', '');
+  liveTx.textContent = ''; liveTx.className = 'live-transcript';
+}
+function setStatus(txt, cls) {
+  statusLabel.textContent = txt;
+  statusLabel.className   = 'status-label' + (cls ? ' ' + cls : '');
+}
+ 
+function addMessage(role, text) {
+  const empty = document.getElementById('emptyState');
+  if (empty) empty.remove();
+  const m = document.createElement('div');
+  m.className = 'msg ' + role;
+  const label = role === 'user'
+    ? `🧑 ${userName || 'You'}`
+    : `💼 ${document.getElementById('businessName').value || 'Infobyd'} Sales Rep`;
+  m.innerHTML = `<div class="msg-label">${label}</div><div class="msg-text">${esc(text)}</div>`;
+  chatLog.appendChild(m);
+  chatLog.scrollTop = chatLog.scrollHeight;
+}
+function esc(t) { return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+ 
+function getSessionId() {
+  if (!sessionStorage.getItem('ib-sid'))
+    sessionStorage.setItem('ib-sid', 'sid-' + Date.now());
+  return sessionStorage.getItem('ib-sid');
+}
+</script>
+</body>
+</html>
