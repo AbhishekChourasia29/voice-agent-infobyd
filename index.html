@@ -190,7 +190,7 @@
     <div class="settings-body">
       <div class="setting-row">
         <label>n8n Webhook URL (production)</label>
-        <input type="text" id="webhookUrl" value="https://abhishek29122003chourasia.app.n8n.cloud/webhook/infobyd-voice" placeholder="https://abhishek29122003chourasia.app.n8n.cloud/webhook/infobyd-voice" />
+        <input type="text" id="webhookUrl" value="https://abhishek29122003chourasia.app.n8n.cloud/webhook-test/infobyd-voice" placeholder="https://abhishek29122003chourasia.app.n8n.cloud/webhook-test/infobyd-voice" />
       </div>
       <div class="setting-row">
         <label>Voice Language</label>
@@ -394,13 +394,11 @@ function personalizeReply(text) {
  
 async function sendToN8n(text) {
   const url = document.getElementById('webhookUrl').value.trim();
-  if (!url) return "Please add your n8n webhook URL to the hidden settings in the HTML code.";
+  if (!url) return "Please check your configuration.";
  
-  const contextPrefix = userName ? `[User name: ${userName}] ` : '';
   const payload = {
-    chatInput: contextPrefix + text,
+    chatInput: text,
     sessionId: getSessionId(),
-    userName:  userName || null,
     messageIndex: messageCount
   };
  
@@ -411,36 +409,19 @@ async function sendToN8n(text) {
       body: JSON.stringify(payload)
     });
  
-    if (!res.ok) {
-      const errText = await res.text().catch(() => '');
-      console.error('n8n error', res.status, errText);
-      return `The server returned error ${res.status}. Please check your n8n workflow is active.`;
+    // SPECIFIC RATE LIMIT HANDLING
+    if (res.status === 429) {
+      return "I'm currently receiving too many requests. Please wait 30 seconds and try again.";
     }
+ 
+    if (!res.ok) return "Connection error. Please try again.";
  
     const data = await res.json();
     messageCount++;
-    return data.output || data.text || data.message || data.response ||
-           (Array.isArray(data) && (data[0]?.output || data[0]?.text)) ||
-           'I received your message but could not parse the response.';
+    return data.output || data.text || "I understand.";
  
   } catch(err) {
-    console.error('Fetch error:', err);
-    if (!err.message.includes('retry')) {
-      await new Promise(r => setTimeout(r, 2000));
-      try {
-        const res2 = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...payload, retry: true })
-        });
-        if (res2.ok) {
-          const d2 = await res2.json();
-          messageCount++;
-          return d2.output || d2.text || d2.message || 'Got it!';
-        }
-      } catch(e2) {}
-    }
-    return "I'm having trouble connecting. Please check if your n8n workflow production URL is properly active and listening.";
+    return "I'm having trouble connecting to the server. Please check your internet.";
   }
 }
  
